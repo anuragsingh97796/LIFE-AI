@@ -2,7 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from './types';
 import HomeScreen from '../screens/dashboard/HomeScreen';
-import GoalsScreen from '../screens/goals/GoalsScreen';
+import GoalStackNavigator from './GoalStackNavigator';
 import AICoachScreen from '../screens/coach/AICoachScreen';
 import ProgressScreen from '../screens/progress/ProgressScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
@@ -60,7 +60,7 @@ export default function MainTabNavigator() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Goals" component={GoalsScreen} />
+      <Tab.Screen name="Goals" component={GoalStackNavigator} />
       <Tab.Screen name="AICoach" component={AICoachScreen} />
       <Tab.Screen name="Progress" component={ProgressScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />

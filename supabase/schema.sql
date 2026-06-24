@@ -24,10 +24,13 @@ create table if not exists public.goals (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
   title text not null,
+  description text,
   category text,
+  priority text default 'Medium', -- Critical, High, Medium, Low
   target_date date,
   status text default 'active', -- active, completed, archived
-  created_at timestamp with time zone default timezone('utc'::text, now())
+  created_at timestamp with time zone default timezone('utc'::text, now()),
+  updated_at timestamp with time zone default timezone('utc'::text, now())
 );
 
 -- 4. DAILY PROGRESS TABLE
@@ -43,11 +46,62 @@ create table if not exists public.daily_progress (
   constraint unique_user_date unique (user_id, date)
 );
 
+-- 5. GOAL MILESTONES TABLE
+create table if not exists public.goal_milestones (
+  id uuid default gen_random_uuid() primary key,
+  goal_id uuid references public.goals(id) on delete cascade not null,
+  title text not null,
+  description text,
+  target_date date,
+  completion_percentage integer default 0,
+  status text default 'pending', -- pending, in_progress, completed
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+-- 6. GOAL PROJECTS TABLE
+create table if not exists public.goal_projects (
+  id uuid default gen_random_uuid() primary key,
+  milestone_id uuid references public.goal_milestones(id) on delete cascade not null,
+  title text not null,
+  description text,
+  status text default 'pending', -- pending, in_progress, completed
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+-- 7. TASKS TABLE
+create table if not exists public.tasks (
+  id uuid default gen_random_uuid() primary key,
+  project_id uuid references public.goal_projects(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade not null, -- Keep user_id for easier direct querying
+  title text not null,
+  description text,
+  priority text default 'Medium',
+  estimated_minutes integer default 30,
+  scheduled_date date,
+  completed boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+-- 8. GOAL ANALYTICS TABLE
+create table if not exists public.goal_analytics (
+  id uuid default gen_random_uuid() primary key,
+  goal_id uuid references public.goals(id) on delete cascade not null unique,
+  progress_percentage integer default 0,
+  predicted_completion_date date,
+  risk_score integer default 0,
+  consistency_score integer default 0,
+  updated_at timestamp with time zone default timezone('utc'::text, now())
+);
+
 -- Enable Row Level Security (RLS)
 alter table public.profiles enable row level security;
 alter table public.user_preferences enable row level security;
 alter table public.goals enable row level security;
 alter table public.daily_progress enable row level security;
+alter table public.goal_milestones enable row level security;
+alter table public.goal_projects enable row level security;
+alter table public.tasks enable row level security;
+alter table public.goal_analytics enable row level security;
 
 -- Drop existing policies if any (safeguard)
 drop policy if exists "Users can view their own profile" on public.profiles;
@@ -105,8 +159,58 @@ create policy "Users can view their own daily progress" on public.daily_progress
 create policy "Users can create their own daily progress" on public.daily_progress
   for insert with check (auth.uid() = user_id);
 
+
 create policy "Users can update their own daily progress" on public.daily_progress
   for update using (auth.uid() = user_id);
+
+-- Goal Milestones
+create policy "Users can view their own goal milestones" on public.goal_milestones
+  for select using (auth.uid() = (select user_id from public.goals where id = goal_id));
+
+create policy "Users can create their own goal milestones" on public.goal_milestones
+  for insert with check (auth.uid() = (select user_id from public.goals where id = goal_id));
+
+create policy "Users can update their own goal milestones" on public.goal_milestones
+  for update using (auth.uid() = (select user_id from public.goals where id = goal_id));
+
+create policy "Users can delete their own goal milestones" on public.goal_milestones
+  for delete using (auth.uid() = (select user_id from public.goals where id = goal_id));
+
+-- Goal Projects
+create policy "Users can view their own goal projects" on public.goal_projects
+  for select using (auth.uid() = (select g.user_id from public.goals g join public.goal_milestones gm on g.id = gm.goal_id where gm.id = milestone_id));
+
+create policy "Users can create their own goal projects" on public.goal_projects
+  for insert with check (auth.uid() = (select g.user_id from public.goals g join public.goal_milestones gm on g.id = gm.goal_id where gm.id = milestone_id));
+
+create policy "Users can update their own goal projects" on public.goal_projects
+  for update using (auth.uid() = (select g.user_id from public.goals g join public.goal_milestones gm on g.id = gm.goal_id where gm.id = milestone_id));
+
+create policy "Users can delete their own goal projects" on public.goal_projects
+  for delete using (auth.uid() = (select g.user_id from public.goals g join public.goal_milestones gm on g.id = gm.goal_id where gm.id = milestone_id));
+
+-- Tasks
+create policy "Users can view their own tasks" on public.tasks
+  for select using (auth.uid() = user_id);
+
+create policy "Users can create their own tasks" on public.tasks
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update their own tasks" on public.tasks
+  for update using (auth.uid() = user_id);
+
+create policy "Users can delete their own tasks" on public.tasks
+  for delete using (auth.uid() = user_id);
+
+-- Goal Analytics
+create policy "Users can view their own goal analytics" on public.goal_analytics
+  for select using (auth.uid() = (select user_id from public.goals where id = goal_id));
+
+create policy "Users can create their own goal analytics" on public.goal_analytics
+  for insert with check (auth.uid() = (select user_id from public.goals where id = goal_id));
+
+create policy "Users can update their own goal analytics" on public.goal_analytics
+  for update using (auth.uid() = (select user_id from public.goals where id = goal_id));
 
 -- Triggers to automatically create a profile and preference on signup
 create or replace function public.handle_new_user()
